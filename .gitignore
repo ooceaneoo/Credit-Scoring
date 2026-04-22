@@ -1,6 +1,24 @@
+# Environnement virtuel
+.venv/
+
+# Données
+data/
+*.csv
+*.pkl
+
+# MLflow
+mlruns/
+mlflow.db
+*.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python
 __pycache__/
 *.pyc
-.venv/
-data/
-mlruns/
-.ipynb_checkpoints/
+
+# OS/éditeur
+.DS_Store
+Thumbs.db
+.vscode/
