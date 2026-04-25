@@ -1,24 +1,37 @@
-# Environnement virtuel
-.venv/
-
-# Données
-data/
-*.csv
-*.pkl
-
-# MLflow
-mlruns/
-mlflow.db
-*.db
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Python
-__pycache__/
-*.pyc
+# Virtual environments
+venv/
+.env/
 
-# OS/éditeur
+# MLflow
+mlruns/
+mlflow.db
+
+# Data files
+data/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+
+# OS
 .DS_Store
 Thumbs.db
-.vscode/
+
+# Reports
+reports/*.html
+reports/*.pdf
+reports/*.docx

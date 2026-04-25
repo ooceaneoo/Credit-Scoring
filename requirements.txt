@@ -3,9 +3,12 @@ numpy
 matplotlib
 seaborn
 scikit-learn
+imbalanced-learn
 lightgbm
 xgboost
+optuna
 mlflow
-shap
-missingno
+joblib
 jupyter
+notebook
+ipykernel
