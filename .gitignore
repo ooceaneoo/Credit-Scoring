@@ -8,6 +8,7 @@ __pycache__/
 
 # Virtual environments
 venv/
+.venv/
 .env/
 
 # MLflow
@@ -17,8 +18,22 @@ mlflow.db
 # Data files
 data/
 
-# Logs
+# Models
+models/*
+!models/.gitkeep
+!models/optimized_lightgbm.pkl
+!models/feature_columns.pkl
+
+# Logs/monitoring
 *.log
+monitoring/production_logs.db
+monitoring/*.jsonl
+monitoring/*.csv
+
+# Tests/coverage
+.coverage
+htmlcov/
+.pytest_cache/
 
 # Temporary files
 *.tmp
@@ -35,3 +50,6 @@ Thumbs.db
 reports/*.html
 reports/*.pdf
 reports/*.docx
+
+# Docker
+*.tar
