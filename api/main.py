@@ -1,0 +1,67 @@
+from fastapi import FastAPI, HTTPException
+from api.schemas import PredictionRequest, PredictionResponse
+from api.model_loader import model, feature_columns
+
+import pandas as pd
+import time
+
+app = FastAPI(
+    title="Credit Scoring API",
+    description="API de prédiction du risque de défaut client",
+    version="1.0"
+)
+
+THRESHOLD = 0.5
+
+
+@app.get("/")
+def root():
+    return {"message": "Credit Scoring API is running"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
+@app.post("/predict", response_model=PredictionResponse)
+def predict(request: PredictionRequest):
+
+    start_time = time.time()
+
+    try:
+        input_data = request.features
+
+        # Conversion dataframe
+        df = pd.DataFrame([input_data])
+
+        # Vérification colonnes manquantes
+        missing_cols = set(feature_columns) - set(df.columns)
+
+        if missing_cols:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Colonnes manquantes : {list(missing_cols)}"
+            )
+
+        # Réorganisation colonnes
+        df = df[feature_columns]
+
+        # Prediction
+        score = model.predict_proba(df)[0][1]
+        prediction = int(score >= THRESHOLD)
+
+        inference_time = (time.time() - start_time) * 1000
+
+        return PredictionResponse(
+            prediction=prediction,
+            score=float(score),
+            threshold=THRESHOLD,
+            inference_time_ms=round(inference_time, 2)
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
