@@ -80,7 +80,7 @@ def test_predict_missing_features():
         json=payload
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 400
 
 
 def test_predict_wrong_type():
