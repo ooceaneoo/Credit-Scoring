@@ -16,15 +16,12 @@ DECISION_THRESHOLD = 0.5
 PSI_WARNING_THRESHOLD = 0.1
 PSI_ALERT_THRESHOLD = 0.2
 
-
 st.set_page_config(
     page_title="Credit Scoring Monitoring",
     layout="wide"
 )
 
-# Style
 st.markdown(
-
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -115,24 +112,18 @@ st.markdown(
         padding: 14px;
         margin-bottom: 16px;
     }
-
-    .small-muted {
-        color: #64748b;
-        font-size: 13px;
-    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
 
-# Chargement des données
 @st.cache_data
 def load_training_data():
     return joblib.load(X_TRAIN_PATH)
 
 
-@st.cache_data
+@st.cache_data(ttl=5)
 def load_logs():
     if not LOG_PATH.exists():
         return pd.DataFrame(), pd.DataFrame()
@@ -140,12 +131,12 @@ def load_logs():
     logs = pd.read_json(LOG_PATH, lines=True)
     logs["timestamp"] = pd.to_datetime(logs["timestamp"])
 
-    features = pd.json_normalize(logs["features"])
+    prediction_logs = logs[logs["score"].notna()].copy()
+    features = pd.json_normalize(prediction_logs["features"])
 
     return logs, features
 
 
-# PSI
 def calculate_psi(reference, current, buckets=10):
     epsilon = 1e-4
 
@@ -227,7 +218,7 @@ def build_psi_table(reference_data, production_data):
         .reset_index(drop=True)
     )
 
-# Helpers UI
+
 def kpi_card(label, value, help_text=""):
     st.markdown(
         f"""
@@ -250,10 +241,9 @@ def style_axis(ax):
     ax.spines["bottom"].set_color("#cbd5e1")
 
 
-# Graphiques
-def plot_scores(logs):
+def plot_scores(logs_pred):
     fig, ax = plt.subplots(figsize=(9, 4))
-    ax.hist(logs["score"], bins=20, color="#93c5fd", edgecolor="white")
+    ax.hist(logs_pred["score"], bins=20, color="#93c5fd", edgecolor="white")
     ax.axvline(
         DECISION_THRESHOLD,
         color="#334155",
@@ -268,8 +258,9 @@ def plot_scores(logs):
     style_axis(ax)
     st.pyplot(fig)
 
-def plot_scores_over_time(logs):
-    logs_sorted = logs.sort_values("timestamp").copy()
+
+def plot_scores_over_time(logs_pred):
+    logs_sorted = logs_pred.sort_values("timestamp").copy()
     logs_sorted["numero_requete"] = range(1, len(logs_sorted) + 1)
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -296,14 +287,14 @@ def plot_scores_over_time(logs):
     ax.set_ylabel("Score prédit")
     ax.legend()
     style_axis(ax)
-
     st.pyplot(fig)
 
-def plot_decisions(logs):
-    accepted = int((logs["prediction"] == 0).sum())
-    risky = int((logs["prediction"] == 1).sum())
 
-    fig, ax = plt.subplots(figsize=(4.5,4.5))
+def plot_decisions(logs_pred):
+    accepted = int((logs_pred["prediction"] == 0).sum())
+    risky = int((logs_pred["prediction"] == 1).sum())
+
+    fig, ax = plt.subplots(figsize=(4.5, 4.5))
 
     ax.pie(
         [accepted, risky],
@@ -312,21 +303,14 @@ def plot_decisions(logs):
         startangle=90,
         radius=0.82,
         colors=["#dae6bb", "#8593cf"],
-        wedgeprops={
-            "width": 0.42,
-            "edgecolor": "white"
-        },
-        textprops={
-            "fontsize": 6,
-            "fontweight": "medium",
-            "color": "#334155"
-        }
+        wedgeprops={"width": 0.42, "edgecolor": "white"},
+        textprops={"fontsize": 6, "fontweight": "medium", "color": "#334155"}
     )
 
     ax.text(
         0,
         0,
-        f"Total\n{len(logs)}",
+        f"Total\n{len(logs_pred)}",
         ha="center",
         va="center",
         fontsize=6,
@@ -334,9 +318,8 @@ def plot_decisions(logs):
         color="#0f172a"
     )
     ax.set_title("Répartition des décisions", fontsize=8, fontweight="medium")
-
-
     st.pyplot(fig)
+
 
 def plot_psi_status_summary(resume):
     categories = ["Stable", "À surveiller", "Drift significatif", "Non calculable"]
@@ -349,21 +332,73 @@ def plot_psi_status_summary(resume):
         color=["#dae6bb", "#f7d9a8", "#e9a5a5", "#d9dee8"]
     )
 
-    ax.set_title(
-        "Répartition des variables selon le PSI",
-        fontsize=13,
-        fontweight="medium"
-    )
+    ax.set_title("Répartition des variables selon le PSI", fontsize=13, fontweight="medium")
     ax.set_ylabel("Nombre de variables")
     style_axis(ax)
-
     st.pyplot(fig)
 
-def plot_latency(logs):
+
+def plot_latency(logs_latency):
     fig, ax = plt.subplots(figsize=(9, 4))
-    ax.hist(logs["inference_time_ms"], bins=20, color="#c4b5fd", edgecolor="white")
+    ax.hist(logs_latency["inference_time_ms"], bins=20, color="#c4b5fd", edgecolor="white")
     ax.set_title("Distribution des temps d'inférence", fontsize=13, fontweight="medium")
     ax.set_xlabel("Temps d'inférence (ms)")
+    ax.set_ylabel("Nombre de requêtes")
+    style_axis(ax)
+    st.pyplot(fig)
+
+
+def plot_system_usage(logs_ops):
+    if logs_ops.empty:
+        st.info("Les métriques CPU/RAM ne sont pas encore disponibles dans les logs.")
+        return
+
+    fig, ax = plt.subplots(figsize=(9, 4))
+
+    logs_sorted = logs_ops.sort_values("timestamp").copy()
+    logs_sorted["numero_requete"] = range(1, len(logs_sorted) + 1)
+
+    ax.plot(
+        logs_sorted["numero_requete"],
+        logs_sorted["cpu_percent"],
+        label="CPU (%)",
+        color="#8593cf",
+        linewidth=2
+    )
+
+    ax.plot(
+        logs_sorted["numero_requete"],
+        logs_sorted["memory_percent"],
+        label="RAM (%)",
+        color="#dae6bb",
+        linewidth=2
+    )
+
+    ax.set_title("Utilisation CPU et mémoire", fontsize=13, fontweight="medium")
+    ax.set_xlabel("Numéro de requête")
+    ax.set_ylabel("Utilisation (%)")
+    ax.legend()
+    style_axis(ax)
+    st.pyplot(fig)
+
+
+def plot_status_codes(logs_ops):
+    if logs_ops.empty:
+        st.info("Les statuts HTTP ne sont pas encore disponibles dans les logs.")
+        return
+
+    status_counts = logs_ops["status_code"].value_counts().sort_index()
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.bar(
+        status_counts.index.astype(str),
+        status_counts.values,
+        color="#bfdbfe",
+        edgecolor="white"
+    )
+
+    ax.set_title("Répartition des statuts HTTP", fontsize=13, fontweight="medium")
+    ax.set_xlabel("Code HTTP")
     ax.set_ylabel("Nombre de requêtes")
     style_axis(ax)
     st.pyplot(fig)
@@ -414,7 +449,6 @@ def plot_top_psi(psi_table):
     st.pyplot(fig)
 
 
-# Interface
 st.markdown('<div class="main-title">Dashboard de Monitoring</div>', unsafe_allow_html=True)
 st.markdown(
     '<div class="subtitle">Suivi des prédictions, de la performance API et du data drift du modèle de scoring.</div>',
@@ -470,15 +504,40 @@ if logs.empty:
     st.warning("Aucun log de production trouvé. Lance l'API puis génère des prédictions.")
     st.stop()
 
+logs_pred = logs[logs["score"].notna()].copy()
+logs_latency = logs[logs["inference_time_ms"].notna()].copy()
+
 psi_table = build_psi_table(X_train, production_data)
-
-score_moyen = logs["score"].mean()
-taux_risque = (logs["prediction"] == 1).mean() * 100
-temps_moyen = logs["inference_time_ms"].mean()
-dernier_log = logs["timestamp"].max().strftime("%d/%m/%Y %H:%M:%S")
-
 resume = psi_table["Statut"].value_counts()
 variables_critiques = psi_table[psi_table["PSI"] >= PSI_ALERT_THRESHOLD]
+
+score_moyen = logs_pred["score"].mean()
+taux_risque = (logs_pred["prediction"] == 1).mean() * 100
+temps_moyen = logs_latency["inference_time_ms"].mean()
+dernier_log = logs["timestamp"].max().strftime("%d/%m/%Y %H:%M:%S")
+
+logs_ops = logs.copy()
+
+if "success" in logs_ops.columns:
+    logs_ops = logs_ops[logs_ops["success"].notna()].copy().tail(100)
+else:
+    logs_ops = pd.DataFrame()
+
+if not logs_ops.empty:
+    taux_succes = logs_ops["success"].mean() * 100
+    nombre_erreurs = int((logs_ops["success"] == False).sum())
+    cpu_moyen = logs_ops["cpu_percent"].mean() if "cpu_percent" in logs_ops.columns else np.nan
+    ram_moyenne = logs_ops["memory_percent"].mean() if "memory_percent" in logs_ops.columns else np.nan
+else:
+    taux_succes = np.nan
+    nombre_erreurs = np.nan
+    cpu_moyen = np.nan
+    ram_moyenne = np.nan
+
+if "success" in logs.columns:
+    logs_recent_success = logs[logs["success"].notna()].copy().tail(100)
+else:
+    logs_recent_success = pd.DataFrame()
 
 tabs = st.tabs([
     "Vue d'ensemble",
@@ -495,84 +554,130 @@ with tabs[0]:
     c1, c2, c3, c4, c5 = st.columns(5)
 
     with c1:
-        kpi_card("Prédictions totales", len(logs), "Nombre d'appels API loggés")
+        kpi_card("Prédictions", len(logs_pred), "Appels API avec prédiction")
     with c2:
         kpi_card("Score moyen", f"{score_moyen:.3f}", "Probabilité moyenne prédite")
     with c3:
         kpi_card("Taux dossiers risqués", f"{taux_risque:.1f} %", "Prédictions au-dessus du seuil")
     with c4:
-        kpi_card("Inférence moyenne", f"{temps_moyen:.2f} ms", "Temps moyen de prédiction")
+        kpi_card(
+            "Taux de succès",
+            f"{taux_succes:.1f} %" if not pd.isna(taux_succes) else "Non disponible",
+            "Sur les logs récents"
+        )
     with c5:
-        kpi_card("Dernière prédiction", dernier_log, "Dernier appel enregistré")
+        kpi_card("Variables en alerte", len(variables_critiques), "PSI ≥ 0.2")
 
     st.markdown('<div class="section-title">Synthèse rapide</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns([1.2, 1])
 
     with col1:
-        plot_scores_over_time(logs)
+        plot_scores_over_time(logs_pred)
 
     with col2:
         plot_psi_status_summary(resume)
 
-    st.markdown('<div class="section-title">Résumé du data drift</div>', unsafe_allow_html=True)
-
-    d1, d2, d3, d4 = st.columns(4)
-
-    with d1:
-        kpi_card("Variables stables", int(resume.get("Stable", 0)), "PSI < 0.1")
-    with d2:
-        kpi_card("À surveiller", int(resume.get("À surveiller", 0)), "0.1 ≤ PSI < 0.2")
-    with d3:
-        kpi_card("Drift significatif", int(resume.get("Drift significatif", 0)), "PSI ≥ 0.2")
-    with d4:
-        kpi_card("Non calculables", int(resume.get("Non calculable", 0)), "Constantes ou trop peu variables")
-
 # Page 2 - Prédictions
 with tabs[1]:
+
+    st.markdown('<div class="section-title">Monitoring des prédictions</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns([1.4, 1])
 
     with col1:
-        plot_scores(logs)
+        plot_scores(logs_pred)
 
     with col2:
-        plot_decisions(logs)
+        plot_decisions(logs_pred)
 
     st.markdown('<div class="section-title">Dernières prédictions</div>', unsafe_allow_html=True)
 
     st.dataframe(
-        logs[["timestamp", "score", "prediction", "inference_time_ms"]]
+        logs_pred[["timestamp", "score", "prediction", "inference_time_ms"]]
         .sort_values("timestamp", ascending=False)
         .head(20),
         use_container_width=True,
         hide_index=True
     )
 
-# Page 3 - API
+# Page 3 - Performance API
 with tabs[2]:
+    st.markdown('<div class="section-title">Monitoring opérationnel</div>', unsafe_allow_html=True)
+
+    o1, o2, o3, o4 = st.columns(4)
+
+    with o1:
+        kpi_card(
+            "Taux de succès",
+            f"{taux_succes:.1f} %" if not pd.isna(taux_succes) else "Non disponible",
+            "Requêtes traitées sans erreur"
+        )
+
+    with o2:
+        kpi_card(
+            "Erreurs",
+            nombre_erreurs if not pd.isna(nombre_erreurs) else "Non disponible",
+            "Requêtes en échec"
+        )
+
+    with o3:
+        kpi_card(
+            "CPU moyen",
+            f"{cpu_moyen:.1f} %" if not pd.isna(cpu_moyen) else "Non disponible",
+            "Utilisation processeur"
+        )
+
+    with o4:
+        kpi_card(
+            "RAM moyenne",
+            f"{ram_moyenne:.1f} %" if not pd.isna(ram_moyenne) else "Non disponible",
+            "Utilisation mémoire"
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
     col1, col2 = st.columns([1.5, 1])
 
     with col1:
-        plot_latency(logs)
+        plot_latency(logs_latency)
 
     with col2:
         latency_summary = pd.DataFrame({
             "Métrique": ["Moyenne", "Médiane", "95e percentile", "Maximum", "Minimum"],
             "Temps (ms)": [
-                round(logs["inference_time_ms"].mean(), 2),
-                round(logs["inference_time_ms"].median(), 2),
-                round(logs["inference_time_ms"].quantile(0.95), 2),
-                round(logs["inference_time_ms"].max(), 2),
-                round(logs["inference_time_ms"].min(), 2),
+                round(logs_latency["inference_time_ms"].mean(), 2),
+                round(logs_latency["inference_time_ms"].median(), 2),
+                round(logs_latency["inference_time_ms"].quantile(0.95), 2),
+                round(logs_latency["inference_time_ms"].max(), 2),
+                round(logs_latency["inference_time_ms"].min(), 2),
             ]
         })
 
         st.markdown("#### Synthèse latence")
         st.dataframe(latency_summary, use_container_width=True, hide_index=True)
 
+    st.markdown('<div class="section-title">Ressources système et erreurs</div>', unsafe_allow_html=True)
 
-# Page 4 - Drift
+    col1, col2 = st.columns([1.5, 1])
+
+    with col1:
+        plot_system_usage(logs_ops)
+
+    with col2:
+        plot_status_codes(logs_ops)
+
+        if not logs_ops.empty and nombre_erreurs > 0:
+            st.markdown("#### Dernières erreurs")
+            st.dataframe(
+                logs_ops[logs_ops["success"] == False][
+                    ["timestamp", "status_code", "error_message"]
+                ].sort_values("timestamp", ascending=False).head(10),
+                use_container_width=True,
+                hide_index=True
+            )
+
+# Page 4 - Data Drift
 with tabs[3]:
     st.markdown('<div class="section-title">Rapport Evidently</div>', unsafe_allow_html=True)
 
@@ -597,9 +702,7 @@ with tabs[3]:
             st.warning("Rapport Evidently introuvable dans le dossier reports.")
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     st.markdown('<div class="section-title">Analyse PSI</div>', unsafe_allow_html=True)
-
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -643,7 +746,7 @@ with tabs[3]:
     with st.expander("Voir le tableau complet des PSI"):
         st.dataframe(psi_table, use_container_width=True, hide_index=True)
 
-# Page 5 - Décision
+# Page 5 - Recommandations
 with tabs[4]:
     st.markdown('<div class="section-title">Décision & recommandations</div>', unsafe_allow_html=True)
 
@@ -655,7 +758,7 @@ with tabs[4]:
         ]
     )
 
-    if nb_critiques == 0:
+    if nb_critiques == 0 and nombre_erreurs == 0:
         st.markdown(
             """
             <div class="status-ok">
@@ -672,9 +775,10 @@ with tabs[4]:
             <div class="status-warning">
             <h3>État actuel : surveillance renforcée</h3>
             {nb_critiques} variables présentent un drift significatif (PSI ≥ 0.2).<br>
-            {nb_surveillance} variables présentent un drift modéré à surveiller.<br><br>
+            {nb_surveillance} variables présentent un drift modéré à surveiller.<br>
+            {nombre_erreurs if not pd.isna(nombre_erreurs) else 0} erreur(s) API ont été historisées sur les logs récents.<br><br>
             Aucun réentraînement automatique n'est déclenché immédiatement.
-            Un réentraînement pourra être envisagé si ces dérives persistent sur plusieurs fenêtres
+            Un réentraînement pourra être envisagé si les dérives persistent sur plusieurs fenêtres
             ou si une baisse de performance métier est observée.
             </div>
             """,
