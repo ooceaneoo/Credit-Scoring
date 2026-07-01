@@ -3,6 +3,7 @@ from api.schemas import PredictionRequest, PredictionResponse
 from api.model_loader import model, feature_columns
 
 import json
+import numpy as np
 import pandas as pd
 import time
 
@@ -17,7 +18,6 @@ app = FastAPI(
 )
 
 THRESHOLD = 0.5
-
 LOG_PATH = Path("monitoring/logs/production_logs.jsonl")
 
 
@@ -28,7 +28,7 @@ def log_prediction(features, score, prediction, inference_time_ms):
     Chaque ligne du fichier correspond à un appel API.
     Ces logs serviront au monitoring et à l'analyse du data drift.
     """
-
+    
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     log_entry = {
@@ -55,16 +55,13 @@ def health():
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(request: PredictionRequest):
-
     start_time = time.time()
 
     try:
         input_data = request.features
 
-        # Conversion de la requête en DataFrame
         df = pd.DataFrame([input_data])
 
-        # Vérification des colonnes attendues par le modèle
         missing_cols = set(feature_columns) - set(df.columns)
 
         if missing_cols:
@@ -73,16 +70,15 @@ def predict(request: PredictionRequest):
                 detail=f"Colonnes manquantes : {list(missing_cols)}"
             )
 
-        # Réorganisation des colonnes dans le même ordre qu'à l'entraînement
         df = df[feature_columns]
 
-        # Prédiction de la probabilité de défaut
-        score = model.predict_proba(df)[0][1]
+        input_array = df.to_numpy(dtype=np.float32)
+
+        score = model.predict_proba(input_array)[0][1]
         prediction = int(score >= THRESHOLD)
 
         inference_time_ms = round((time.time() - start_time) * 1000, 2)
 
-        # Enregistrement de l'appel pour le monitoring
         log_prediction(
             features=input_data,
             score=score,
