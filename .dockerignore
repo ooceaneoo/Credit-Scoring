@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+.ipynb_checkpoints/
+.git/
+data/
+mlruns/
+mlflow.db
+reports/
+notebooks/
+.pytest_cache/
+htmlcov/
+*.log
+*.tmp

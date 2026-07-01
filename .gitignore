@@ -27,7 +27,7 @@ models/*
 # Logs/monitoring
 *.log
 monitoring/production_logs.db
-monitoring/*.jsonl
+monitoring/logs/production_logs.jsonl
 monitoring/*.csv
 
 # Tests/coverage
