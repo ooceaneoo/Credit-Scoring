@@ -513,8 +513,6 @@ variables_critiques = psi_table[psi_table["PSI"] >= PSI_ALERT_THRESHOLD]
 
 score_moyen = logs_pred["score"].mean()
 taux_risque = (logs_pred["prediction"] == 1).mean() * 100
-temps_moyen = logs_latency["inference_time_ms"].mean()
-dernier_log = logs["timestamp"].max().strftime("%d/%m/%Y %H:%M:%S")
 
 logs_ops = logs.copy()
 
@@ -533,11 +531,6 @@ else:
     nombre_erreurs = np.nan
     cpu_moyen = np.nan
     ram_moyenne = np.nan
-
-if "success" in logs.columns:
-    logs_recent_success = logs[logs["success"].notna()].copy().tail(100)
-else:
-    logs_recent_success = pd.DataFrame()
 
 tabs = st.tabs([
     "Vue d'ensemble",
