@@ -7,7 +7,8 @@ import streamlit as st
 
 # Configuration
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LOG_PATH = PROJECT_ROOT / "monitoring" / "logs" / "production_logs.jsonl"
+PRODUCTION_LOG_PATH = PROJECT_ROOT / "monitoring" / "logs" / "production_logs.jsonl"
+DEMO_LOG_PATH = PROJECT_ROOT / "monitoring" / "logs" / "demo_logs.jsonl"
 X_TRAIN_PATH = PROJECT_ROOT / "data" / "X_train.pkl"
 EVIDENTLY_REPORT_PATH = PROJECT_ROOT / "reports" / "evidently_data_drift_report.html"
 
@@ -122,20 +123,23 @@ st.markdown(
 def load_training_data():
     return joblib.load(X_TRAIN_PATH)
 
-
 @st.cache_data(ttl=5)
 def load_logs():
-    if not LOG_PATH.exists():
+
+    if PRODUCTION_LOG_PATH.exists():
+        log_path = PRODUCTION_LOG_PATH
+    elif DEMO_LOG_PATH.exists():
+        log_path = DEMO_LOG_PATH
+    else:
         return pd.DataFrame(), pd.DataFrame()
 
-    logs = pd.read_json(LOG_PATH, lines=True)
+    logs = pd.read_json(log_path, lines=True)
     logs["timestamp"] = pd.to_datetime(logs["timestamp"])
 
     prediction_logs = logs[logs["score"].notna()].copy()
     features = pd.json_normalize(prediction_logs["features"])
 
     return logs, features
-
 
 def calculate_psi(reference, current, buckets=10):
     epsilon = 1e-4
@@ -485,8 +489,9 @@ with st.sidebar:
     st.markdown(
         """
         <div class="sidebar-box">
-        <b>Logs de production</b><br>
-        monitoring/logs/production_logs.jsonl<br><br>
+        <b>Source des logs</b><br>
+        Production ou démonstration
+
         <b>Données de référence</b><br>
         data/X_train.pkl
         </div>
@@ -502,6 +507,7 @@ logs, production_data = load_logs()
 
 if logs.empty:
     st.warning("Aucun log de production trouvé. Lance l'API puis génère des prédictions.")
+    st.warning("Aucun fichier de logs disponible (production ou démonstration).")
     st.stop()
 
 logs_pred = logs[logs["score"].notna()].copy()
